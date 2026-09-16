@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0B1220">
+<meta name="theme-color" content="#070D1A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Darıca Gücü • Yo-Yo IR1 Lab</title>
@@ -13,115 +13,155 @@
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+<div id="splash"><img src="icons/icon-192.png" alt=""><p>DARICA GÜÇÜ<br><span>YO-YO IR1 PERFORMANCE LAB</span></p></div>
+
 <div id="app">
   <header class="topbar">
     <div class="brand">
       <img src="icons/icon-192.png" alt="logo" class="logo">
       <div>
-        <h1>Darıca Gücü <span>Yo-Yo IR1 Lab</span></h1>
-        <p class="sub" id="connStatus">Performans &amp; Dayanıklılık Takibi</p>
+        <h1>DARICA GÜÇÜ</h1>
+        <p class="sub">Yo-Yo IR1 Performance Lab</p>
       </div>
     </div>
     <nav class="tabs">
-      <button class="tab active" data-view="live">Canlı Test</button>
-      <button class="tab" data-view="athletes">Sporcular</button>
-      <button class="tab" data-view="reports">Raporlar</button>
+      <button class="tab active" data-view="live">⚡ Canlı Test</button>
+      <button class="tab" data-view="athletes">👥 Sporcular</button>
+      <button class="tab" data-view="reports">📊 Raporlar</button>
     </nav>
   </header>
 
   <main>
-    <!-- ============ CANLI TEST ============ -->
+    <!-- ================= CANLI TEST ================= -->
     <section id="view-live" class="view active">
-      <!-- Kurulum kartı -->
+      <!-- KURULUM -->
       <div id="setupCard" class="card setup">
-        <h2>Yeni Test Oturumu</h2>
+        <h2><span class="ic">🎯</span> Yeni Test Oturumu</h2>
         <div class="form-grid">
           <label>Oturum Adı<input id="sTitle" type="text" placeholder="Örn: Sezon Başı Dayanıklılık Testi"></label>
-          <label>Grup
-            <select id="sGroup"></select>
-          </label>
           <label>Tarih<input id="sDate" type="date"></label>
           <label>Mekân<input id="sLocation" type="text" placeholder="Örn: Darıca Sentetik Saha"></label>
         </div>
-        <h3>Teste Katılacak Sporcular</h3>
+        <h3><span class="ic">👥</span> Sporcuları Seç <span id="pickCount" class="pill">0 seçili</span></h3>
+        <input id="pickSearch" type="text" placeholder="🔍 Sporcu ara...">
         <div id="pickAthletes" class="pick-grid"></div>
-        <button id="btnStartSetup" class="btn primary big">Testi Başlat</button>
+        <div class="sound-bar">
+          <span class="ic">🔊</span>
+          <input id="volSlider" type="range" min="0" max="100" value="80">
+          <label class="chk"><input id="chkVibrate" type="checkbox" checked> Titreşim</label>
+        </div>
+        <button id="btnStartSetup" class="btn primary big">⚡ TESTİ BAŞLAT</button>
+        <p class="dim center">Bangsbo ve ark. (2008) resmi protokolü • 2×20 m koşular • her 40 m sonrası 10 sn aktif dinlenme</p>
       </div>
 
-      <!-- Canlı pist -->
+      <!-- CANLI PİST -->
       <div id="liveCard" class="live hidden">
-        <div class="live-head">
-          <div class="stage-box">
-            <div class="stage-top"><span class="lvl" id="curLevel">1</span><span class="lvl-label">SEVİYE</span></div>
-            <div class="stage-mid"><span class="shuttle" id="curShuttle">1</span><span class="lvl-label">MEKİK</span></div>
-            <div class="stage-bot">
-              <span class="speed" id="curSpeed">13.0</span><span class="lvl-label">KM/S</span>
-              <span class="dist" id="curDist">0</span><span class="lvl-label">M</span>
+        <div class="hud">
+          <div class="hud-main">
+            <div class="hud-cell big">
+              <span class="v" id="curLevel">–</span><span class="l">SEVİYE</span>
+            </div>
+            <div class="hud-cell">
+              <span class="v gold" id="curScore">–</span><span class="l">SKOR</span>
+            </div>
+            <div class="hud-cell">
+              <span class="v green" id="curSpeed">–</span><span class="l">KM/S</span>
+            </div>
+            <div class="hud-cell">
+              <span class="v" id="curDist">0</span><span class="l">METRE</span>
             </div>
           </div>
-          <div class="meta-box">
-            <p><b id="liveTitle"></b></p>
-            <p id="liveMeta" class="dim"></p>
-            <p class="timer" id="liveTimer">00:00</p>
-            <p class="dim" id="livePhase">Hazır</p>
+          <div class="hud-side">
+            <p class="session-name" id="liveTitle"></p>
+            <p class="dim" id="liveMeta"></p>
+            <span class="timer" id="liveTimer">00:00</span>
+            <span class="phase running" id="livePhase">HAZIR</span>
           </div>
-          <div class="ctrl-box">
-            <button id="btnPause" class="btn gold">Duraklat</button>
-            <button id="btnStop" class="btn danger">Bitir &amp; Kaydet</button>
+          <div class="hud-ctrl">
+            <button id="btnPause" class="btn ghost small">⏸</button>
+            <button id="btnStop" class="btn danger small">⏹ Bitir</button>
           </div>
         </div>
+
+        <!-- PİST -->
+        <div class="track-card">
+          <div class="track-head">
+            <span>🏁 20 M PİST</span>
+            <span id="trackInfo" class="dim">—</span>
+          </div>
+          <div class="lane">
+            <div class="ground">
+              <div class="center-line"></div>
+              <div class="marker" style="left:2%">0m</div>
+              <div class="marker" style="left:26%">5m</div>
+              <div class="marker" style="left:50%">10m</div>
+              <div class="marker" style="left:74%">15m</div>
+              <div class="marker" style="left:98%">20m</div>
+            </div>
+            <div class="cone a"></div>
+            <div class="cone b"></div>
+            <div class="ghost" id="ghost"></div>
+            <div class="runner-shadow" id="runnerShadow"></div>
+          </div>
+          <div class="run-progress"><div class="run-bar" id="runBar"></div></div>
+          <div class="recovery hidden" id="recovery">
+            <svg viewBox="0 0 80 80" class="ring"><circle class="bgc" cx="40" cy="40" r="34"/><circle class="fgc" id="ringFg" cx="40" cy="40" r="34"/></svg>
+            <div class="rec-num" id="recNum">10</div>
+            <div class="rec-lbl">DİNLENME<br><span id="recNext">SONRAKİ KOŞU</span></div>
+          </div>
+        </div>
+
         <div id="athleteBoard" class="board"></div>
       </div>
     </section>
 
-    <!-- ============ SPORCULAR ============ -->
+    <!-- ================= SPORCULAR ================= -->
     <section id="view-athletes" class="view">
       <div class="card">
-        <h2>Sporcu Ekle</h2>
+        <h2><span class="ic">➕</span> Sporcu Ekle</h2>
         <div class="form-grid">
           <label>Ad Soyad<input id="aName" type="text" placeholder="Örn: Arda Kaya"></label>
           <label>Mevki
             <select id="aPosition">
-              <option value="GK">Kaleci (GK)</option>
-              <option value="DF">Defans (DF)</option>
-              <option value="MF">Orta Saha (MF)</option>
-              <option value="FW">Forvet (FW)</option>
+              <option value="GK">🧤 Kaleci (GK)</option>
+              <option value="DF">🛡 Defans (DF)</option>
+              <option value="MF">⚙ Orta Saha (MF)</option>
+              <option value="FW">⚡ Forvet (FW)</option>
             </select>
           </label>
           <label>Forma No<input id="aJersey" type="number" min="1" max="99"></label>
           <label>Doğum Yılı<input id="aBirth" type="number" min="2000" max="2018"></label>
           <label>Grup<input id="aGroup" type="text" placeholder="Örn: U13"></label>
         </div>
-        <button id="btnAddAthlete" class="btn primary">Sporcuyu Kaydet</button>
+        <button id="btnAddAthlete" class="btn primary">Kaydet</button>
       </div>
       <div class="card">
-        <h2>Kadro <span id="athleteCount" class="pill"></span></h2>
+        <h2><span class="ic">👥</span> Kadro <span id="athleteCount" class="pill">0</span></h2>
+        <input id="rosterSearch" type="text" placeholder="🔍 Kadroda ara...">
         <div id="athleteList" class="athlete-list"></div>
       </div>
     </section>
 
-    <!-- ============ RAPORLAR ============ -->
+    <!-- ================= RAPORLAR ================= -->
     <section id="view-reports" class="view">
-      <div class="card">
-        <h2>Test Oturumları</h2>
+      <div class="card" id="sessionListCard">
+        <h2><span class="ic">📊</span> Test Oturumları</h2>
         <div id="sessionList" class="session-list"></div>
       </div>
-      <div id="reportDetail" class="hidden card report">
+      <div id="reportDetail" class="card report hidden">
         <div class="report-head no-print">
           <button id="btnBackReport" class="btn ghost">← Geri</button>
-          <button id="btnPrint" class="btn gold">A4 Yazdır / PDF</button>
+          <button id="btnPrint" class="btn gold">🖨 A4 Yazdır / PDF</button>
         </div>
         <div id="reportBody"></div>
       </div>
     </section>
   </main>
 
-  <footer class="foot">Darıca Gücü Spor Kulübü • Yo-Yo Intermittent Recovery Test Level 1</footer>
+  <footer class="foot">Darıca Gücü Spor Kulübü • Yo-Yo Intermittent Recovery Test Level 1<br>Protokol: Bangsbo, Iaia &amp; Krustrup (2008), Sports Med 38(1):37-51</footer>
 </div>
 
 <div id="toast" class="toast"></div>
-<audio id="beepSound" preload="auto"></audio>
-
 <script type="module" src="js/app.js"></script>
 </body>
 </html>
