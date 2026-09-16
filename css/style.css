@@ -231,3 +231,66 @@ textarea{min-height:70px;resize:vertical}
   tr.elim td{opacity:.6}
   .report-foot{color:#777}
 }
+
+/* ============ v3 EKLEMELER ============ */
+
+/* Giriş ekranı */
+#loginView{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.login-card{background:var(--glass);border:1px solid var(--line);border-radius:22px;padding:34px 26px;max-width:380px;width:100%;backdrop-filter:blur(16px);display:flex;flex-direction:column;gap:14px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.login-logo{width:76px;height:76px;border-radius:20px;margin:0 auto;box-shadow:0 10px 34px rgba(232,198,74,.4)}
+.login-card h1{font-size:1.15rem;letter-spacing:2px;text-align:center}
+.login-sub{font-size:.6rem;color:var(--gold);letter-spacing:3px;text-align:center;font-weight:600;margin-top:-8px}
+
+/* Antrenör rozeti */
+.coach-chip{display:flex;align-items:center;gap:8px;background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:6px 10px;font-size:.76rem;color:var(--dim);font-weight:700}
+.coach-chip span{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Devam çubuğu */
+.resume{border-color:rgba(232,198,74,.45)}
+.resume h2{color:var(--gold)}
+.resume-actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+
+/* Toplu koşu barı */
+.batch-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.big-grow{flex:1;min-width:220px;padding:16px !important;font-size:1rem !important;letter-spacing:.5px}
+.hint{font-size:.72rem;flex-basis:100%}
+
+/* Kart "koştu" durumu */
+.athlete-card.keep{border-color:var(--emerald2) !important;box-shadow:0 0 0 1px var(--emerald2)}
+
+/* Sonuç giriş modu */
+.athlete-card.results{opacity:1}
+.athlete-card.results .hr-input{margin-top:8px}
+
+/* Rapor mini bar */
+.mini-bar{height:5px;background:rgba(7,13,26,.9);border-radius:4px;margin-top:4px;overflow:hidden}
+.mini-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--emerald2),var(--emerald));border-radius:4px}
+
+/* Genç değerlendirme rozeti */
+.rating.rt-dev{background:linear-gradient(135deg,#1D3A6B,#152747);color:var(--sky)}
+
+/* Oturum satır aksiyonları */
+.s-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.s-actions{display:flex;gap:6px;align-items:center}
+
+/* Modal */
+.modal{position:fixed;inset:0;background:rgba(4,8,16,.72);z-index:150;display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(6px)}
+.modal-box{background:var(--bg2);border:1px solid var(--line2);border-radius:20px;max-width:560px;width:100%;max-height:86vh;overflow:auto;padding:22px;position:relative;box-shadow:0 24px 70px rgba(0,0,0,.6)}
+.modal-close{position:absolute;top:12px;right:12px;background:var(--panel2);border:1px solid var(--line2);color:var(--tx);border-radius:10px;width:34px;height:34px;font-size:1rem;cursor:pointer}
+.hist-row{display:grid;grid-template-columns:96px 1fr 86px 74px;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:.82rem}
+.hist-date{color:var(--dim);font-size:.76rem}
+.hist-bar{position:relative;height:22px;background:rgba(7,13,26,.85);border-radius:8px;overflow:hidden}
+.hist-bar i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,rgba(56,189,248,.35),var(--sky));border-radius:8px}
+.hist-bar b{position:relative;z-index:2;display:flex;align-items:center;height:100%;padding:0 10px;font-size:.78rem}
+.hist-delta{text-align:right;font-weight:800;font-size:.78rem}
+.hist-vo{text-align:right;color:var(--dim);font-size:.72rem}
+.hist-delta .up{color:var(--emerald)}
+.hist-delta .down{color:var(--red)}
+.hist-summary{margin-top:14px;border-radius:14px;padding:12px;font-size:.9rem;text-align:center}
+.hist-summary.up-bg{background:linear-gradient(135deg,rgba(34,211,165,.14),rgba(34,211,165,.04));border:1px solid rgba(34,211,165,.4)}
+.hist-summary.down-bg{background:linear-gradient(135deg,rgba(255,90,90,.14),rgba(255,90,90,.04));border:1px solid rgba(255,90,90,.4)}
+@media(max-width:640px){.hist-row{grid-template-columns:80px 1fr 74px}.hist-vo{display:none}}
+
+/* Stat rozetleri (rapor üst) */
+.stat b{display:block;font-size:1.5rem;background:linear-gradient(135deg,#fff, #A8BAD8);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat b.gold{background:linear-gradient(135deg,var(--gold),#fff0c0);-webkit-background-clip:text;background-clip:text}

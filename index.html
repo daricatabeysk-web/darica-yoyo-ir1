@@ -15,6 +15,19 @@
 <body>
 <div id="splash"><img src="icons/icon-192.png" alt=""><p>DARICA GÜÇÜ<br><span>YO-YO IR1 PERFORMANCE LAB</span></p></div>
 
+<!-- ============ GİRİŞ EKRANI ============ -->
+<div id="loginView" class="hidden">
+  <div class="login-card">
+    <img src="icons/icon-192.png" alt="logo" class="login-logo">
+    <h1>DARICA GÜÇÜ</h1>
+    <p class="login-sub">Yo-Yo IR1 Performance Lab</p>
+    <label>E-posta<input id="loginEmail" type="email" autocomplete="username" placeholder="antrenor@daricagucu.app"></label>
+    <label>Şifre<input id="loginPass" type="password" autocomplete="current-password" placeholder="••••••••"></label>
+    <button id="btnLogin" class="btn primary big">GİRİŞ YAP</button>
+    <p class="dim center" style="font-size:.7rem;margin-top:12px">Veritabanına sadece giriş yapan antrenör yazabilir</p>
+  </div>
+</div>
+
 <div id="app">
   <header class="topbar">
     <div class="brand">
@@ -29,11 +42,25 @@
       <button class="tab" data-view="athletes">👥 Sporcular</button>
       <button class="tab" data-view="reports">📊 Raporlar</button>
     </nav>
+    <div class="coach-chip">
+      <span id="coachName"></span>
+      <button id="btnLogout" class="btn ghost small" title="Çıkış">⎋</button>
+    </div>
   </header>
 
   <main>
     <!-- ================= CANLI TEST ================= -->
     <section id="view-live" class="view active">
+      <!-- YARIDA KALAN OTURUM -->
+      <div id="resumeBar" class="card resume hidden">
+        <h2>🔁 Yarıda kalan test bulundu</h2>
+        <p id="resumeInfo" class="dim"></p>
+        <div class="resume-actions">
+          <button id="btnResume" class="btn primary">▶ Kaldığı Yerden Devam Et</button>
+          <button id="btnDiscard" class="btn danger">Sil</button>
+        </div>
+      </div>
+
       <!-- KURULUM -->
       <div id="setupCard" class="card setup">
         <h2><span class="ic">🎯</span> Yeni Test Oturumu</h2>
@@ -51,7 +78,7 @@
           <label class="chk"><input id="chkVibrate" type="checkbox" checked> Titreşim</label>
         </div>
         <button id="btnStartSetup" class="btn primary big">⚡ TESTİ BAŞLAT</button>
-        <p class="dim center">Bangsbo ve ark. (2008) resmi protokolü • 2×20 m koşular • her 40 m sonrası 10 sn aktif dinlenme</p>
+        <p class="dim center">Bangsbo ve ark. (2008) resmi protokolü • 2×20 m koşular • her 40 m sonrası 10 sn aktif dinlenme<br>Test sırasında telefon çökerse otomatik kayıt sayesinde kaldığın yerden devam edebilirsin</p>
       </div>
 
       <!-- CANLI PİST -->
@@ -159,6 +186,14 @@
   </main>
 
   <footer class="foot">Darıca Gücü Spor Kulübü • Yo-Yo Intermittent Recovery Test Level 1<br>Protokol: Bangsbo, Iaia &amp; Krustrup (2008), Sports Med 38(1):37-51</footer>
+</div>
+
+<!-- GELİŞİM KARTI MODAL -->
+<div id="historyModal" class="modal hidden">
+  <div class="modal-box">
+    <button id="btnCloseHist" class="modal-close">✕</button>
+    <div id="histBody"></div>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>
