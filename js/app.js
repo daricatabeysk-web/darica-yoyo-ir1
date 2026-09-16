@@ -322,9 +322,11 @@ function startLive(picked, restored = null) {
   for (let i = 0; i < 5; i++) AudioSys.tone(620, 0.12, 0.45, i);
   renderBoard();
   live.raf = requestAnimationFrame(tick);
+  // motor zamanlayıcısı: rAF durursa bile (ekran kapalı/arka plan) fazlar ilerler
   live.clock = setInterval(() => {
-    if (live && !live.paused && !live.finished) $("liveTimer").textContent = fmt(elapsedSec());
-  }, 500);
+    if (!live || live.finished) return;
+    if (!live.paused) { stepEngine(); $("liveTimer").textContent = fmt(elapsedSec()); }
+  }, 250);
   saveSnapshot(); // ilk ara kayıt
 }
 
@@ -381,14 +383,30 @@ function endRun() {
 }
 
 /* ---- rAF döngüsü: faz geçişleri duvar saatinden ---- */
-function tick() {
-  if (!live || live.finished) return;
-  if (live.paused) { live.raf = requestAnimationFrame(tick); return; }
+/* ---- FAZ MOTORU: sadece duvar saatine bakar, her yerden çağrılabilir ---- */
+function stepEngine() {
+  if (!live || live.finished || live.paused) return;
   const el = (Date.now() - live.phaseStart) / 1000;
   if (live.phase === "countdown") {
     $("livePhase").textContent = "HAZIRLAN " + Math.max(1, Math.ceil(5 - el));
     if (el >= 5) { AudioSys.go(); beginRun(live.runIdx); }
   } else if (live.phase === "run") {
+    if (el >= curRun().runSec) endRun();
+  } else if (live.phase === "rest") {
+    const rem = Math.max(0, RECOVERY_SEC - el);
+    $("recNum").textContent = Math.ceil(rem);
+    $("ringFg").style.strokeDashoffset = 213.6 * (1 - rem / RECOVERY_SEC);
+    if (el >= RECOVERY_SEC) beginRun(live.runIdx + 1);
+  }
+}
+
+/* ---- rAF: sadece animasyon ---- */
+function tick() {
+  if (!live || live.finished) return;
+  if (live.paused) { live.raf = requestAnimationFrame(tick); return; }
+  const el = (Date.now() - live.phaseStart) / 1000;
+  stepEngine();
+  if (live.phase === "run" && !live.finished) {
     const r = curRun();
     const frac = Math.min(1, el / r.runSec);
     const legFrac = (el % r.legSec) / r.legSec;
@@ -401,13 +419,11 @@ function tick() {
       const p = live.players[i];
       if (p) c.classList.toggle("keep", p.tapped && !p.eliminated);
     });
-    if (el >= r.runSec) endRun();
-  } else if (live.phase === "rest") {
+  } else if (live.phase === "rest" && !live.finished) {
     const rem = Math.max(0, RECOVERY_SEC - el);
     $("recNum").textContent = Math.ceil(rem);
     $("ringFg").style.strokeDashoffset = 213.6 * (1 - rem / RECOVERY_SEC);
     $("runBar").style.width = "0%";
-    if (el >= RECOVERY_SEC) beginRun(live.runIdx + 1);
   }
   live.raf = requestAnimationFrame(tick);
 }
