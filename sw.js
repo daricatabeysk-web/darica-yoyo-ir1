@@ -1,4 +1,4 @@
-const CACHE = "dg-yoyo-ir1-v3";
+const CACHE = "dg-yoyo-ir1-v4";
 const ASSETS = [
   "./", "./index.html", "./css/style.css", "./js/app.js", "./js/vendor/supabase.esm.js",
   "./manifest.webmanifest", "./icons/icon-192.png", "./icons/icon-512.png"
