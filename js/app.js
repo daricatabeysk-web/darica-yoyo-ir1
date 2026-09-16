@@ -1,7 +1,11 @@
-/* =========================================================
-   Darıca Gücü — Yo-Yo IR1 Lab
-   Canlı test • Oyuncu kartları • Takım raporu • Kalıcı hafıza
-   ========================================================= */
+/* ============================================================
+   Darıca Gücü — Yo-Yo IR1 Performance Lab
+   Bilimsel protokol: Bangsbo, Iaia & Krustrup (2008) Sports Med
+   - 2×20 m gidiş-dönüş koşuları (40 m/etap)
+   - Her etap sonrası 10 sn aktif dinlenme
+   - Hızlar: 10 → 19 km/h, 91 etap, toplam 3640 m
+   - VO2max = mesafe × 0.0084 + 36.4
+   ============================================================ */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
 
 const SUPA_URL = "https://riqjwcyayewkyhmpgbmd.supabase.co";
@@ -9,71 +13,109 @@ const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const sb = createClient(SUPA_URL, SUPA_KEY);
 
 const $ = (id) => document.getElementById(id);
-const toastEl = $("toast");
+
+/* ---------------- Toast ---------------- */
 let toastT;
 function toast(msg) {
-  toastEl.textContent = msg;
-  toastEl.classList.add("show");
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
   clearTimeout(toastT);
-  toastT = setTimeout(() => toastEl.classList.remove("show"), 3200);
+  toastT = setTimeout(() => t.classList.remove("show"), 3200);
 }
 
-/* ---------------- Yo-Yo IR1 Protokolü ---------------- */
-// Seviye 1: 13.0 km/s, her seviye +0.5 km/s, seviye başına 2 mekik (2x20m), seviye sonunda 10 sn dinlenme
-const IR1 = {
-  startSpeed: 13.0,
-  inc: 0.5,
-  shuttlesPerStage: 2,
-  recoverySec: 10,
-  shuttleDist: 20,
-  // toplam mekik -> seviye, seviye içi mekik, hız, mesafe
-  calc(n) {
-    // n: 1'den başlayan global mekik indeksi
-    const stage = Math.floor((n - 1) / this.shuttlesPerStage) + 1;
-    const inStage = ((n - 1) % this.shuttlesPerStage) + 1;
-    const speed = this.startSpeed + (stage - 1) * this.inc;
-    const dist = n * this.shuttleDist;
-    return { stage, inStage, speed, dist };
+/* ============================================================
+   BİLİMSEL PROTOKOL — Bangsbo ve ark. (2008) resmi tablosu
+   ============================================================ */
+const SCHEDULE = (() => {
+  // [hız, etap sayısı] — resmi YYIR1 hız çizelgesi
+  const spec = [[10,1],[12,1],[13,2],[13.5,3],[14,4],[14.5,8],[15,8],[15.5,8],[16,8],[16.5,8],[17,8],[17.5,8],[18,8],[18.5,8],[19,8]];
+  // İlk 11 etabın resmi seviye:mekik numaraları (5:1, 9:1, 11:1, 11:2, 12:1-3, 13:1-4)
+  const early = [];
+  for (const [lv, c] of [[5,1],[9,1],[11,2],[12,3],[13,4]])
+    for (let i = 1; i <= c; i++) early.push({ level: lv, inLevel: i });
+  const runs = [];
+  let n = 0;
+  for (const [speed, count] of spec) {
+    for (let i = 0; i < count; i++) {
+      n++;
+      const level = n <= 11 ? early[n-1].level : 14 + Math.floor((n-12)/8);
+      const inLevel = n <= 11 ? early[n-1].inLevel : ((n-12) % 8) + 1;
+      runs.push({
+        n, speed, level, inLevel,
+        dist: n * 40,
+        legSec: 72 / speed,       // 20 m bacak süresi
+        runSec: 144 / speed,      // 40 m etap süresi
+      });
+    }
+  }
+  return runs;
+})();
+const RECOVERY_SEC = 10;
+const TOTAL_RUNS = SCHEDULE.length; // 91
+const vo2max = (dist) => +(dist * 0.0084 + 36.4).toFixed(1);
+
+// Yetişkin erkek normları (Topend Sports / Bangsbo 2008)
+const NORMS = [
+  { label: "ELİTE", cls: "rt-elite", min: 2400 },
+  { label: "MÜKEMMEL", cls: "rt-exc", min: 2000 },
+  { label: "İYİ", cls: "rt-good", min: 1520 },
+  { label: "ORTALAMA", cls: "rt-avg", min: 1040 },
+  { label: "ORTALAMA ALTI", cls: "rt-poor", min: 520 },
+  { label: "ZAYIF", cls: "rt-poor", min: 0 },
+];
+const rating = (dist) => NORMS.find(x => dist >= x.min) || NORMS[NORMS.length - 1];
+
+/* ============================================================
+   SES MOTORU — AudioContext tabanlı, kesintisiz
+   ============================================================ */
+const AudioSys = {
+  ctx: null, vol: +(localStorage.getItem("yoyoVol") ?? 0.8), vib: (localStorage.getItem("yoyoVib") ?? "1") === "1",
+  ensure() {
+    if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.ctx.state === "suspended") this.ctx.resume();
+    return this.ctx;
   },
-  shuttleSeconds(n) {
-    const { speed } = this.calc(n);
-    return this.shuttleDist / (speed * 1000 / 3600); // 20m süresi (sn)
+  tone(freq, dur, vol, when = 0) {
+    try {
+      const ctx = this.ensure();
+      const t = ctx.currentTime + when;
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = "sine"; o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(Math.max(vol * this.vol, 0.001), t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + dur + 0.05);
+    } catch (e) {}
   },
-  vo2max(dist) { return +(dist * 0.0092 + 39.4).toFixed(1); } // Bangsbo tahmini
+  vibrate(p) { if (this.vib && navigator.vibrate) try { navigator.vibrate(p); } catch (e) {} },
+  // Ses tipleri
+  leg()     { this.tone(950, 0.14, 0.55); this.vibrate(40); },                    // dönüş düdüğü
+  runStart(){ this.tone(950, 0.14, 0.55); this.vibrate(60); },                    // etap başlangıcı
+  count()   { this.tone(620, 0.12, 0.45); },                                      // geri sayım
+  go()      { this.tone(1250, 0.25, 0.7); this.vibrate([80,60,80]); },            // BAŞLA
+  last3()   { this.tone(800, 0.12, 0.5); this.vibrate(30); },                     // son 3 sn
+  levelUp() { this.tone(1500, 0.12, 0.5); },                                      // seviye artışı
+  elim()    { this.tone(320, 0.35, 0.6); this.vibrate([120,80,120]); },           // eleme
+  finish()  { [0,0.35,0.7].forEach((d,i)=>this.tone(1400+i*120, 0.3, 0.65, d)); this.vibrate([150,100,150,100,300]); },
 };
 
-/* ---------------- Ses ---------------- */
-let actx;
-function beep(freq = 1000, dur = 0.12, vol = 0.4) {
-  try {
-    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-    if (actx.state === "suspended") actx.resume();
-    const o = actx.createOscillator(), g = actx.createGain();
-    o.frequency.value = freq; o.type = "sine";
-    g.gain.setValueAtTime(vol, actx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
-    o.connect(g); g.connect(actx.destination);
-    o.start(); o.stop(actx.currentTime + dur);
-  } catch (e) { /* ses engellenmişse sessiz devam */ }
-}
-
-/* ---------------- Genel durum ---------------- */
+/* ============================================================
+   DURUM
+   ============================================================ */
 let athletes = [];
 let currentSession = null;
-let live = null; // canlı test durumu
-
+let live = null;
+let wakeLock = null;
 const POS_TR = { GK: "Kaleci", DF: "Defans", MF: "Orta Saha", FW: "Forvet" };
 
-async function loadAthletes() {
-  const { data, error } = await sb.from("yy_athletes").select("*").order("name");
-  if (error) { toast("Veritabanına ulaşılamadı — proje uyuyor olabilir"); return; }
-  athletes = data || [];
-  renderAthletePicker();
-  renderAthleteList();
-  renderGroupOptions();
-}
+const fmt = (s) => String(Math.floor(s/60)).padStart(2,"0") + ":" + String(Math.floor(s%60)).padStart(2,"0");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" })[c] ?? c);
 
-/* ---------------- Sekmeler ---------------- */
+/* ============================================================
+   SEKMELER
+   ============================================================ */
 document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
   document.querySelectorAll(".view").forEach(x => x.classList.remove("active"));
@@ -82,7 +124,20 @@ document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () =>
   if (t.dataset.view === "reports") loadSessions();
 }));
 
-/* ---------------- Sporcular ---------------- */
+/* ============================================================
+   SUPABASE
+   ============================================================ */
+async function loadAthletes() {
+  const { data, error } = await sb.from("yy_athletes").select("*").order("name");
+  if (error) { toast("Veritabanına ulaşılamadı — Supabase uyuyor olabilir"); return; }
+  athletes = data || [];
+  renderAthleteList();
+  renderAthletePicker();
+}
+
+/* ============================================================
+   SPORCULAR SEKMESİ
+   ============================================================ */
 $("btnAddAthlete").addEventListener("click", async () => {
   const name = $("aName").value.trim();
   if (!name) return toast("Sporcu adı gerekli");
@@ -96,231 +151,366 @@ $("btnAddAthlete").addEventListener("click", async () => {
   const { error } = await sb.from("yy_athletes").insert(rec);
   if (error) return toast("Kayıt başarısız: " + error.message);
   toast(name + " kadroya eklendi ✅");
-  ["aName", "aJersey", "aBirth"].forEach(i => $(i).value = "");
+  ["aName","aJersey","aBirth"].forEach(i => $(i).value = "");
   loadAthletes();
 });
 
+function athleteRow(a) {
+  return `<div class="a-row">
+    <div class="info">
+      <b>${esc(a.name)} ${a.jersey_number ? "#" + a.jersey_number : ""}</b>
+      <span>${POS_TR[a.position] || a.position || "—"} • ${a.group_name || "grup yok"} ${a.birth_year ? "• " + a.birth_year : ""}</span>
+    </div>
+    <button class="del" data-id="${a.id}">Sil</button>
+  </div>`;
+}
+
 function renderAthleteList() {
-  $("athleteCount").textContent = athletes.length + " sporcu";
-  $("athleteList").innerHTML = athletes.map(a => `
-    <div class="a-row">
-      <div class="info">
-        <b>${esc(a.name)} ${a.jersey_number ? "#" + a.jersey_number : ""}</b>
-        <span>${POS_TR[a.position] || a.position || ""} • ${a.group_name || "Grup yok"} ${a.birth_year ? "• " + a.birth_year : ""}</span>
-      </div>
-      <button class="btn del" data-id="${a.id}">Sil</button>
-    </div>`).join("");
+  const q = ($("rosterSearch").value || "").toLocaleLowerCase("tr");
+  const list = athletes.filter(a => a.name.toLocaleLowerCase("tr").includes(q));
+  $("athleteCount").textContent = athletes.length;
+  $("athleteList").innerHTML = list.map(athleteRow).join("") || '<p class="dim center">Sonuç yok.</p>';
   $("athleteList").querySelectorAll(".del").forEach(b => b.addEventListener("click", async () => {
     if (!confirm("Bu sporcuyu silmek istiyor musun?")) return;
     await sb.from("yy_athletes").delete().eq("id", b.dataset.id);
     loadAthletes();
   }));
 }
+$("rosterSearch").addEventListener("input", renderAthleteList);
 
+/* ---- Canlı test seçici (gruplu + arama + tümünü seç) ---- */
 function renderAthletePicker() {
-  $("pickAthletes").innerHTML = athletes.map(a => `
-    <label class="pick">
-      <input type="checkbox" value="${a.id}">
-      <span>${esc(a.name)} ${a.jersey_number ? "#" + a.jersey_number : ""}</span>
-    </label>`).join("") || '<p class="dim">Önce "Sporcular" sekmesinden oyuncu ekle.</p>';
-}
+  const q = ($("pickSearch").value || "").toLocaleLowerCase("tr");
+  const groups = {};
+  athletes.filter(a => a.name.toLocaleLowerCase("tr").includes(q)).forEach(a => {
+    const g = a.group_name || "Grupsuz";
+    (groups[g] = groups[g] || []).push(a);
+  });
+  const keys = Object.keys(groups).sort();
+  $("pickAthletes").innerHTML = keys.map(g => `
+    <div class="pick-group"><span>${esc(g)} (${groups[g].length})</span><button data-grp="${esc(g)}">TÜMÜNÜ SEÇ</button></div>
+    ${groups[g].map(a => `
+      <div class="pick" data-id="${a.id}">
+        ${esc(a.name)} ${a.jersey_number ? "#" + a.jersey_number : ""}
+      </div>`).join("")}
+  `).join("") || '<p class="dim center">Sporcu bulunamadı.</p>';
 
-function renderGroupOptions() {
-  const groups = [...new Set(athletes.map(a => a.group_name).filter(Boolean))];
-  $("sGroup").innerHTML = '<option value="">Grup seç</option>' +
-    groups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
+  $("pickAthletes").querySelectorAll(".pick").forEach(el => el.addEventListener("click", () => {
+    el.classList.toggle("on");
+    updatePickCount();
+  }));
+  $("pickAthletes").querySelectorAll("[data-grp]").forEach(btn => btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const g = btn.dataset.grp;
+    const cards = [...$("pickAthletes").querySelectorAll(".pick-group")];
+    const idx = cards.findIndex(c => c.querySelector("button").dataset.grp === g);
+    if (idx === -1) return;
+    // grup başlığından sonraki kartlar (bir sonraki gruba kadar)
+    let probe = cards[idx].nextElementSibling;
+    let allOn = true;
+    while (probe && probe.classList.contains("pick")) {
+      if (!probe.classList.contains("on")) allOn = false;
+      probe = probe.nextElementSibling;
+    }
+    let sib = cards[idx].nextElementSibling;
+    while (sib && sib.classList.contains("pick")) {
+      sib.classList.toggle("on", !allOn);
+      sib = sib.nextElementSibling;
+    }
+    updatePickCount();
+  }));
 }
+function updatePickCount() {
+  const n = $("pickAthletes").querySelectorAll(".pick.on").length;
+  $("pickCount").textContent = n + " seçili";
+}
+$("pickSearch").addEventListener("input", renderAthletePicker);
 
-/* ---------------- Canlı Test ---------------- */
+/* ---- Ses ayarları ---- */
+$("volSlider").value = Math.round(AudioSys.vol * 100);
+$("volSlider").addEventListener("input", e => { AudioSys.vol = e.target.value / 100; localStorage.setItem("yoyoVol", AudioSys.vol); });
+$("chkVibrate").checked = AudioSys.vib;
+$("chkVibrate").addEventListener("change", e => { AudioSys.vib = e.target.checked; localStorage.setItem("yoyoVib", e.target.checked ? "1" : "0"); });
+
+/* ============================================================
+   CANLI TEST
+   ============================================================ */
 $("btnStartSetup").addEventListener("click", async () => {
-  const picked = [...$("pickAthletes").querySelectorAll("input:checked")].map(i => i.value);
+  const picked = [...$("pickAthletes").querySelectorAll(".pick.on")].map(el => athletes.find(a => a.id === el.dataset.id)).filter(Boolean);
   if (!picked.length) return toast("En az bir sporcu seç");
-  const title = $("sTitle").value.trim() || "Yo-Yo IR1 Testi";
+  AudioSys.ensure(); // ses kilidini aç
   const rec = {
-    title,
-    test_date: $("sDate").value || new Date().toISOString().slice(0, 10),
-    group_name: $("sGroup").value || null,
+    title: $("sTitle").value.trim() || "Yo-Yo IR1 Testi",
+    test_date: $("sDate").value || new Date().toISOString().slice(0,10),
+    group_name: picked[0].group_name,
     location: $("sLocation").value.trim() || null,
     status: "live",
   };
+  $("btnStartSetup").disabled = true;
   const { data, error } = await sb.from("yy_test_sessions").insert(rec).select().single();
-  if (error || !data) return toast("Oturum oluşturulamadı: " + (error?.message || ""));
+  $("btnStartSetup").disabled = false;
+  if (error || !data) return toast("Oturum oluşturulamadı: " + (error?.message || "bilinmeyen"));
   currentSession = data;
   startLive(picked);
 });
 
-function startLive(pickedIds) {
+function startLive(picked) {
   $("setupCard").classList.add("hidden");
   $("liveCard").classList.remove("hidden");
   $("liveTitle").textContent = currentSession.title;
-  $("liveMeta").textContent = (currentSession.group_name ? currentSession.group_name + " • " : "") +
-    (currentSession.location || "") + " • " + pickedIds.length + " sporcu";
+  $("liveMeta").textContent = `${currentSession.group_name || ""} ${currentSession.location ? "• " + currentSession.location : ""} • ${picked.length} sporcu • ${new Date(currentSession.test_date).toLocaleDateString("tr-TR")}`;
   live = {
-    shuttleN: 0,            // tamamlanan global mekik (protokol)
-    timer: 0,
-    paused: false,
-    finished: false,
-    t0: Date.now(),
-    timerInt: setInterval(() => {
-      if (!live.paused) {
-        live.timer = Math.floor((Date.now() - live.t0) / 1000);
-        $("liveTimer").textContent = fmt(live.timer);
-      }
-    }, 500),
-    players: pickedIds.map(id => {
-      const a = athletes.find(x => x.id === id);
-      return {
-        id, name: a.name, jersey: a.jersey_number, position: a.position,
-        completed: 0, violations: 0, eliminated: false, tapped: false, hr: null,
-      };
-    }),
+    players: picked.map(a => ({
+      id: a.id, name: a.name, jersey: a.jersey_number, position: a.position,
+      completed: 0, violations: 0, eliminated: false, tapped: false, hr: null,
+    })),
+    runIdx: 0, phase: "countdown", phaseStart: performance.now(), phaseLen: 5000,
+    elapsed: 0, t0: performance.now(), paused: false, timeouts: [], finished: false,
   };
+  if (navigator.wakeLock) navigator.wakeLock.request("screen").then(w => wakeLock = w).catch(() => {});
   renderBoard();
-  nextShuttle();
+  // 5-4-3-2-1 geri sayım
+  $("livePhase").textContent = "HAZIRLAN";
+  $("livePhase").className = "phase running";
+  for (let i = 5; i >= 1; i--) {
+    live.timeouts.push(setTimeout(() => { $("livePhase").textContent = i; AudioSys.count(); }, (5 - i) * 1000));
+  }
+  live.timeouts.push(setTimeout(() => {
+    AudioSys.go();
+    startRun(0);
+  }, 5000));
+  live.raf = requestAnimationFrame(tick);
+  live.clock = setInterval(() => {
+    if (!live.paused) $("liveTimer").textContent = fmt((performance.now() - live.t0) / 1000);
+  }, 500);
 }
 
-function nextShuttle() {
-  if (!live || live.paused || live.finished) return;
-  live.shuttleN++;
-  const p = IR1.calc(live.shuttleN);
-  $("curLevel").textContent = p.stage;
-  $("curShuttle").textContent = p.inStage;
-  $("curSpeed").textContent = p.speed.toFixed(1);
-  $("curDist").textContent = p.dist;
-  beep(900, 0.15, 0.5); // mekik başlama düdüğü
-  $("livePhase").textContent = `${p.stage}. seviye • ${p.inStage}. mekik — KOŞ`;
+function curRun() { return SCHEDULE[live.runIdx]; }
 
-  const runSec = IR1.shuttleSeconds(live.shuttleN);
-  live.runTO = setTimeout(() => {
-    // Mekik bitti: düdük + değerlendirme + dinlenme
-    beep(1300, 0.18, 0.5);
-    let autoOut = false;
-    live.players.forEach(pl => {
-      if (pl.eliminated) return;
-      if (!pl.tapped) {
-        pl.violations++;
-        if (pl.violations >= 2) { pl.eliminated = true; autoOut = true; }
-      }
-      pl.tapped = false;
+function startRun(i, offsetSec = 0) {
+  live.runIdx = i;
+  live.phase = "run";
+  live.phaseStart = performance.now() - offsetSec * 1000;
+  live.phaseLen = curRun().runSec;
+  const r = curRun();
+  $("curLevel").textContent = r.level;
+  $("curScore").textContent = r.level + "." + r.inLevel;
+  $("curSpeed").textContent = r.speed.toFixed(1);
+  $("curDist").textContent = r.dist;
+  $("trackInfo").textContent = `${r.n}. etap • ${r.speed.toFixed(1)} km/h • ${r.dist} m hedef`;
+  $("livePhase").textContent = "KOŞ";
+  $("livePhase").className = "phase running";
+  $("recovery").classList.add("hidden");
+  if (offsetSec === 0) { AudioSys.runStart(); if (r.inLevel === 1) AudioSys.levelUp(); }
+  // ikinci bacak (dönüş) düdüğü + etap sonu
+  const remain = (r.runSec - offsetSec) * 1000;
+  if (offsetSec < r.legSec) {
+    live.timeouts.push(setTimeout(() => AudioSys.leg(), Math.max(0, (r.legSec - offsetSec) * 1000)));
+  }
+  live.timeouts.push(setTimeout(() => endRun(), remain));
+  live.players.forEach(p => { if (!p.eliminated) p.tapped = false; });
+}
+
+function endRun() {
+  const r = curRun();
+  let anyOut = false;
+  live.players.forEach(p => {
+    if (p.eliminated) return;
+    if (!p.tapped) {
+      p.violations++;
+      if (p.violations >= 2) { p.eliminated = true; anyOut = true; }
+    }
+  });
+  if (anyOut) AudioSys.elim();
+  renderBoard();
+  // doğal bitiş: 91. etap tamamlandı
+  if (r.n >= TOTAL_RUNS || live.players.every(p => p.eliminated)) { finishLive(true); return; }
+  // 10 sn aktif dinlenme
+  live.phase = "rest";
+  live.phaseStart = performance.now();
+  live.phaseLen = RECOVERY_SEC;
+  const next = SCHEDULE[live.runIdx + 1];
+  $("livePhase").textContent = "DİNLENME";
+  $("livePhase").className = "phase rest";
+  $("recovery").classList.remove("hidden");
+  $("recNext").textContent = `SONRAKİ: ${next.level}.${next.inLevel} • ${next.speed.toFixed(1)} km/h`;
+  for (let s = 3; s >= 1; s--) {
+    live.timeouts.push(setTimeout(() => AudioSys.last3(), (RECOVERY_SEC - s) * 1000));
+  }
+  live.timeouts.push(setTimeout(() => startRun(live.runIdx + 1), RECOVERY_SEC * 1000));
+}
+
+/* ---- rAF: pist animasyonu ---- */
+function tick() {
+  if (!live || live.finished) return;
+  const now = performance.now();
+  const el = (now - live.phaseStart) / 1000;
+  if (live.phase === "run" && !live.paused) {
+    const r = curRun();
+    const frac = Math.min(1, el / r.runSec);
+    const legFrac = (el % r.legSec) / r.legSec;
+    const leg = Math.floor(el / r.legSec) % 2; // 0: A→B, 1: B→A
+    const pos = 4 + (leg === 0 ? legFrac : (1 - legFrac)) * 92;
+    $("ghost").style.left = pos + "%";
+    $("runnerShadow").style.left = pos + "%";
+    $("runBar").style.width = (frac * 100) + "%";
+    // geciken sporcuları vurgula
+    const lagging = frac > 0.65;
+    document.querySelectorAll("#athleteBoard .athlete-card").forEach((c, i) => {
+      const p = live.players[i];
+      if (!p) return;
+      c.classList.toggle("keep", p.tapped && !p.eliminated);
     });
-    if (autoOut) beep(400, 0.3, 0.6);
-    renderBoard();
-    if (live.players.every(pl => pl.eliminated)) { finishLive(); return; }
-    const isStageEnd = p.inStage === IR1.shuttlesPerStage;
-    const rest = isStageEnd ? IR1.recoverySec : 2;
-    $("livePhase").textContent = isStageEnd ? `Dinlenme: ${IR1.recoverySec} sn` : "Çevir — HAZIR";
-    live.restTO = setTimeout(nextShuttle, rest * 1000);
-  }, runSec * 1000);
+  } else if (live.phase === "rest" && !live.paused) {
+    const rem = Math.max(0, RECOVERY_SEC - el);
+    $("recNum").textContent = Math.ceil(rem);
+    $("ringFg").style.strokeDashoffset = 213.6 * (1 - rem / RECOVERY_SEC);
+    $("runBar").style.width = "0%";
+  }
+  live.raf = requestAnimationFrame(tick);
 }
 
+/* ---- Duraklat / Devam ---- */
+$("btnPause").addEventListener("click", () => {
+  if (!live || live.finished) return;
+  live.paused = !live.paused;
+  if (live.paused) {
+    live.timeouts.forEach(clearTimeout); live.timeouts = [];
+    live.pausedElapsed = (performance.now() - live.phaseStart) / 1000;
+    $("btnPause").textContent = "▶";
+    $("livePhase").textContent = "DURAKLADI";
+    $("livePhase").className = "phase paused";
+    if (wakeLock) { wakeLock.release(); wakeLock = null; }
+  } else {
+    const off = live.pausedElapsed || 0;
+    if (live.phase === "countdown") {
+      live.phaseStart = performance.now() - off * 1000;
+      const rest = Math.max(0, 5 - off);
+      for (let i = 0; i < Math.ceil(rest); i++) live.timeouts.push(setTimeout(() => AudioSys.count(), i * 1000));
+      live.timeouts.push(setTimeout(() => { AudioSys.go(); startRun(0); }, rest * 1000));
+    } else if (live.phase === "run") {
+      startRun(live.runIdx, off);
+    } else if (live.phase === "rest") {
+      live.phaseStart = performance.now() - off * 1000;
+      const rest = Math.max(0, RECOVERY_SEC - off);
+      const next = SCHEDULE[live.runIdx + 1];
+      $("recNext").textContent = `SONRAKİ: ${next ? next.level + "." + next.inLevel + " • " + next.speed.toFixed(1) + " km/h" : "—"}`
+      for (let s = 3; s >= 1; s--) if (rest > s) live.timeouts.push(setTimeout(() => AudioSys.last3(), (rest - s) * 1000));
+      live.timeouts.push(setTimeout(() => startRun(live.runIdx + 1), rest * 1000));
+    }
+    $("btnPause").textContent = "⏸";
+    live.t0 = performance.now() - live.elapsed * 1000;
+  }
+});
+
+/* ---- Bitir ---- */
+$("btnStop").addEventListener("click", () => {
+  if (!live || live.finished) return;
+  if (confirm("Testi bitirip sonuçları kaydet?")) finishLive(false);
+});
+
+async function finishLive(natural) {
+  if (!live || live.finished) return;
+  live.finished = true;
+  live.timeouts.forEach(clearTimeout);
+  cancelAnimationFrame(live.raf);
+  clearInterval(live.clock);
+  AudioSys.finish();
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+
+  if (natural) {
+    // testi tamamlayıp hâlâ koşan sporcular tüm protokolü bitirmiş sayılır
+    live.players.forEach(p => { if (!p.eliminated) p.completed = TOTAL_RUNS; });
+  }
+  const rows = live.players.map(p => {
+    const r = p.completed > 0 ? SCHEDULE[p.completed - 1] : null;
+    const dist = p.completed * 40;
+    return {
+      session_id: currentSession.id,
+      athlete_id: p.id,
+      level: r ? r.level : null,
+      shuttle: r ? r.inLevel : null,
+      distance_m: dist,
+      vo2max: dist ? vo2max(dist) : null,
+      hr_max: p.hr,
+      violations: p.violations,
+      eliminated: p.eliminated,
+      elapsed_seconds: Math.floor(live.elapsed || (performance.now() - live.t0) / 1000),
+    };
+  });
+  const { error } = await sb.from("yy_test_results").insert(rows);
+  if (error) toast("Sonuç kaydedilemedi: " + error.message);
+  await sb.from("yy_test_sessions").update({ status: "completed" }).eq("id", currentSession.id);
+
+  toast(natural ? "🏆 Test tamamlandı! " + rows.length + " sporcu kaydedildi." : "Test bitti — sonuçlar kaydedildi ✅");
+  $("liveCard").classList.add("hidden");
+  $("setupCard").classList.remove("hidden");
+  live = null;
+}
+
+/* ---- Oyuncu kartları ---- */
 function renderBoard() {
-  $("athleteBoard").innerHTML = live.players.map((pl, i) => {
-    const p = IR1.calc(Math.max(1, pl.completed));
-    const dist = pl.completed * IR1.shuttleDist;
-    const state = pl.eliminated ? ["ELENEN", "state-out"] :
-      pl.violations > 0 ? ["UYARI", "state-warn"] : ["AKTİF", "state-ok"];
+  $("athleteBoard").innerHTML = live.players.map((p, i) => {
+    const r = p.completed > 0 ? SCHEDULE[p.completed - 1] : null;
+    const dist = p.completed * 40;
+    const state = p.eliminated ? ["ELENEN","state-out"] : p.violations > 0 ? ["UYARI","state-warn"] : ["AKTİF","state-ok"];
     return `
-    <div class="athlete-card ${pl.eliminated ? "eliminated" : pl.violations ? "warn" : ""}">
+    <div class="athlete-card ${p.eliminated ? "gone" : p.violations ? "warn" : ""}">
       <span class="ac-state ${state[1]}">${state[0]}</span>
       <div class="ac-head">
-        <span class="ac-name">${esc(pl.name)}</span>
-        <span class="ac-pos">${pl.position || ""}${pl.jersey ? " #" + pl.jersey : ""}</span>
+        <span class="ac-name">${esc(p.name)}</span>
+        <span class="ac-pos">${p.position || ""}${p.jersey ? " #" + p.jersey : ""}</span>
       </div>
       <div class="ac-stats">
-        <span>Seviye<b>${pl.completed ? p.stage : "–"}</b></span>
-        <span>Mekik<b>${pl.completed}</b></span>
-        <span>Mesafe<b>${dist} m</b></span>
-        <span>İhlal<b style="color:${pl.violations ? "var(--amber)" : "var(--tx)"}">${pl.violations}</b></span>
+        <span>SEVİYE<b class="gold">${r ? r.level : "–"}</b></span>
+        <span>MESAFE<b>${dist}<i style="font-style:normal;font-size:.6em"> m</i></b></span>
+        <span>VO₂<b>${dist ? vo2max(dist) : "–"}</b></span>
+        <span>İHLAL<b style="color:${p.violations ? "var(--amber)" : "var(--tx)"}">${p.violations}</b></span>
       </div>
-      ${pl.eliminated ? `
+      ${p.eliminated ? `
         <div class="hr-input">
-          <input type="number" placeholder="Nabız (ops.)" id="hr-${i}" min="80" max="240">
-          <button class="btn primary" data-hr="${i}">Kaydet</button>
+          <input type="number" id="hr-${i}" placeholder="💗 Nabız" min="80" max="240">
+          <button class="btn primary" data-hr="${i}">✓</button>
         </div>` : `
         <div class="ac-actions">
-          <button class="btn ok" data-ok="${i}">✓ Mekik Tamam</button>
+          <button class="btn ok" data-ok="${i}">✓ Koşu</button>
           <button class="btn viol" data-vi="${i}">⚠ İhlal</button>
-          <button class="btn out" data-out="${i}" style="grid-column:1/3">Elden Çıkar</button>
+          <button class="btn out" data-out="${i}">✕ Elden Çıkar</button>
         </div>`}
     </div>`;
   }).join("");
 
   $("athleteBoard").querySelectorAll("[data-ok]").forEach(b => b.addEventListener("click", () => {
-    const pl = live.players[+b.dataset.ok];
-    if (pl.eliminated) return;
-    pl.completed = Math.max(pl.completed, live.shuttleN); // güncel mekikte tut
-    pl.tapped = true;
+    const p = live.players[+b.dataset.ok];
+    if (p.eliminated) return;
+    p.completed = Math.max(p.completed, curRun().n);
+    p.tapped = true;
+    AudioSys.tone(700, 0.06, 0.2);
     renderBoard();
   }));
   $("athleteBoard").querySelectorAll("[data-vi]").forEach(b => b.addEventListener("click", () => {
-    const pl = live.players[+b.dataset.vi];
-    if (pl.eliminated) return;
-    pl.violations++;
-    if (pl.violations >= 2) pl.eliminated = true;
-    beep(400, 0.2, 0.4);
+    const p = live.players[+b.dataset.vi];
+    if (p.eliminated) return;
+    p.violations++;
+    if (p.violations >= 2) { p.eliminated = true; AudioSys.elim(); }
     renderBoard();
   }));
   $("athleteBoard").querySelectorAll("[data-out]").forEach(b => b.addEventListener("click", () => {
-    const pl = live.players[+b.dataset.out];
-    pl.eliminated = true;
+    const p = live.players[+b.dataset.out];
+    p.eliminated = true;
     renderBoard();
-    if (live.players.every(x => x.eliminated)) finishLive();
+    if (live.players.every(x => x.eliminated)) finishLive(false);
   }));
   $("athleteBoard").querySelectorAll("[data-hr]").forEach(b => b.addEventListener("click", () => {
-    const pl = live.players[+b.dataset.hr];
-    pl.hr = +($("hr-" + b.dataset.hr).value) || null;
-    toast(pl.name + " nabız kaydedildi");
+    const p = live.players[+b.dataset.hr];
+    p.hr = +($("hr-" + b.dataset.hr).value) || null;
+    toast(p.name + " • nabız kaydedildi 💗");
   }));
 }
 
-$("btnPause").addEventListener("click", () => {
-  if (!live) return;
-  live.paused = !live.paused;
-  $("btnPause").textContent = live.paused ? "Devam Et" : "Duraklat";
-  if (live.paused) { clearTimeout(live.runTO); clearTimeout(live.restTO); }
-  else { live.t0 = Date.now() - live.timer * 1000; nextShuttle(); }
-});
-
-$("btnStop").addEventListener("click", () => {
-  if (!live) return;
-  if (confirm("Testi bitirip sonuçları kaydetmek istiyor musun?")) finishLive();
-});
-
-async function finishLive() {
-  if (!live || live.finished) return;
-  live.finished = true;
-  clearTimeout(live.runTO); clearTimeout(live.restTO);
-  clearInterval(live.timerInt);
-  beep(1300, 0.5, 0.6); setTimeout(() => beep(1300, 0.5, 0.6), 350);
-
-  const rows = live.players.map(pl => {
-    const p = IR1.calc(Math.max(1, pl.completed));
-    const dist = pl.completed * IR1.shuttleDist;
-    return {
-      session_id: currentSession.id,
-      athlete_id: pl.id,
-      level: pl.completed ? p.stage : null,
-      shuttle: pl.completed ? p.inStage : null,
-      distance_m: dist,
-      vo2max: dist ? IR1.vo2max(dist) : null,
-      hr_max: pl.hr,
-      violations: pl.violations,
-      eliminated: pl.eliminated,
-      elapsed_seconds: live.timer,
-    };
-  });
-  const { error } = await sb.from("yy_test_results").insert(rows);
-  if (error) toast("Sonuç kaydı hatası: " + error.message);
-  await sb.from("yy_test_sessions").update({ status: "completed" }).eq("id", currentSession.id);
-
-  toast("Test tamamlandı — " + rows.length + " sporcu sonucu kaydedildi ✅");
-  $("liveCard").classList.add("hidden");
-  $("setupCard").classList.remove("hidden");
-  live = null;
-  loadSessions();
-}
-
-/* ---------------- Raporlar ---------------- */
+/* ============================================================
+   RAPORLAR
+   ============================================================ */
 async function loadSessions() {
   const { data, error } = await sb.from("yy_test_sessions").select("*").order("test_date", { ascending: false });
   if (error) return;
@@ -328,22 +518,23 @@ async function loadSessions() {
     <div class="s-row" data-id="${s.id}">
       <div>
         <b>${esc(s.title)}</b>
-        <span class="dim">${s.test_date} ${s.group_name ? "• " + esc(s.group_name) : ""} ${s.location ? "• " + esc(s.location) : ""} ${s.status === "completed" ? "• ✅ Tamamlandı" : ""}</span>
+        <span class="dim">${s.test_date} ${s.group_name ? "• " + esc(s.group_name) : ""} ${s.location ? "• " + esc(s.location) : ""} ${s.status === "completed" ? "• ✅" : ""}</span>
       </div>
       <span class="dim">Rapor →</span>
-    </div>`).join("") || '<p class="dim">Henüz test oturumu yok.</p>';
+    </div>`).join("") || '<p class="dim center">Henüz test oturumu yok.</p>';
   $("sessionList").querySelectorAll(".s-row").forEach(r => r.addEventListener("click", () => openReport(r.dataset.id)));
 }
 
 async function openReport(sessionId) {
   const [{ data: s }, { data: results }] = await Promise.all([
     sb.from("yy_test_sessions").select("*").eq("id", sessionId).single(),
-    sb.from("yy_test_results").select("*, yy_athletes(name, position, jersey_number)").eq("session_id", sessionId),
+    sb.from("yy_test_results").select("*, yy_athletes(name, position, jersey_number, birth_year)").eq("session_id", sessionId),
   ]);
   if (!s) return;
   const sorted = (results || []).slice().sort((a, b) => (b.distance_m || 0) - (a.distance_m || 0));
-  const finishers = sorted.filter(r => !r.eliminated);
-  const avgV = sorted.length ? (sorted.reduce((t, r) => t + (+r.vo2max || 0), 0) / sorted.filter(r => r.vo2max).length || 0) : 0;
+  const withV = sorted.filter(r => r.vo2max);
+  const avgV = withV.length ? withV.reduce((t, r) => t + +r.vo2max, 0) / withV.length : 0;
+  const avgD = sorted.length ? sorted.reduce((t, r) => t + (r.distance_m || 0), 0) / sorted.length : 0;
   const best = sorted[0];
   const posDist = {};
   sorted.forEach(r => { const p = r.yy_athletes?.position || "?"; posDist[p] = (posDist[p] || 0) + 1; });
@@ -355,25 +546,28 @@ async function openReport(sessionId) {
     </div>
     <div class="stat-grid">
       <div class="stat"><b>${sorted.length}</b><span>KATILIMCI</span></div>
-      <div class="stat"><b>${finishers.length}</b><span>TAMAMLADı</span></div>
-      <div class="stat"><b>${best ? best.distance_m + " m" : "–"}</b><span>EN İYİ MESAFE</span></div>
-      <div class="stat"><b>${avgV ? avgV.toFixed(1) : "–"}</b><span>ORT. VO2MAX (TAHMİN)</span></div>
+      <div class="stat"><b>${Math.round(avgD)} m</b><span>ORT. MESAFE</span></div>
+      <div class="stat"><b>${best ? best.distance_m + " m" : "–"}</b><span>EN İYİ</span></div>
+      <div class="stat"><b>${avgV ? avgV.toFixed(1) : "–"}</b><span>ORT. VO₂max</span></div>
     </div>
     <table>
-      <thead><tr><th>#</th><th>Sporcu</th><th>Mevki</th><th>Seviye</th><th>Mekik</th><th>Mesafe</th><th>VO2max</th><th>İhlal</th><th>Durum</th></tr></thead>
+      <thead><tr><th>#</th><th>Sporcu</th><th>Mevki</th><th>Skor</th><th>Mesafe</th><th>VO₂max</th><th>Değerlendirme</th><th>Durum</th></tr></thead>
       <tbody>
-        ${sorted.map((r, i) => `
+        ${sorted.map((r, i) => {
+          const rt = rating(r.distance_m || 0);
+          const age = r.yy_athletes?.birth_year ? new Date(s.test_date).getFullYear() - r.yy_athletes.birth_year : null;
+          return `
           <tr class="${r.eliminated ? "elim" : ""}">
             <td><span class="rank ${i === 0 ? "g" : i === 1 ? "s" : i === 2 ? "b" : ""}">${i + 1}</span></td>
-            <td><b>${esc(r.yy_athletes?.name || "?")}</b>${r.yy_athletes?.jersey_number ? " #" + r.yy_athletes.jersey_number : ""}</td>
-            <td>${POS_TR[r.yy_athletes?.position] || r.yy_athletes?.position || "–"}</td>
-            <td>${r.level || "–"}</td>
-            <td>${r.shuttle || "–"}</td>
+            <td><b>${esc(r.yy_athletes?.name || "?")}</b>${r.yy_athletes?.jersey_number ? " #" + r.yy_athletes.jersey_number : ""}<br><span class="dim" style="font-size:.68rem">${age ? age + " yaş" : ""}</span></td>
+            <td>${POS_TR[r.yy_athletes?.position] || "–"}</td>
+            <td><b>${r.level ? r.level + "." + r.shuttle : "–"}</b></td>
             <td><b>${r.distance_m || 0} m</b></td>
             <td>${r.vo2max || "–"}</td>
-            <td>${r.violations || 0}</td>
-            <td>${r.eliminated ? "Elenen" : "Tamamladı"}${r.hr_max ? " • " + r.hr_max + " bpm" : ""}</td>
-          </tr>`).join("")}
+            <td><span class="rating ${rt.cls}">${rt.label}</span></td>
+            <td>${r.eliminated ? "Elenen" : "Tamamladı"}${r.hr_max ? "<br><span class='dim' style='font-size:.68rem'>💗 " + r.hr_max + " bpm</span>" : ""}</td>
+          </tr>`;
+        }).join("")}
       </tbody>
     </table>
     <h3>Pozisyon Dağılımı</h3>
@@ -381,11 +575,13 @@ async function openReport(sessionId) {
       ${Object.entries(posDist).map(([p, c]) => `<div class="pos-chip">${POS_TR[p] || p}: <b>${c}</b></div>`).join("")}
     </div>
     <h3>Antrenör Notları</h3>
-    <textarea id="coachNotes" placeholder="Test hakkındaki gözlemler, notlar...">${esc(s.notes || "")}</textarea>
-    <button id="btnSaveNotes" class="btn primary" style="margin-top:8px">Notları Kaydet</button>
-    <p class="report-foot">Yo-Yo Intermittent Recovery Test Level 1 • VO2max değerleri mesafeye dayalı tahmindir (Bangsbo)</p>
-  `;
-  $("sessionList").parentElement.classList.add("hidden");
+    <textarea id="coachNotes" placeholder="Gözlemler, gelişim alanları, hedefler...">${esc(s.notes || "")}</textarea>
+    <button id="btnSaveNotes" class="btn primary" style="margin-top:10px">Notları Kaydet</button>
+    <p class="report-foot">
+      Yo-Yo Intermittent Recovery Test Level 1 • Protokol: Bangsbo, Iaia &amp; Krustrup (2008) Sports Med 38(1):37-51<br>
+      VO₂max = mesafe × 0.0084 + 36.4 • Değerlendirme aralıkları yetişkin erkek normlarıdır; gelişim takibi için karşılaştırma temel alınmalıdır
+    </p>`;
+  $("sessionListCard").classList.add("hidden");
   $("reportDetail").classList.remove("hidden");
   $("btnSaveNotes").addEventListener("click", async () => {
     const { error } = await sb.from("yy_test_sessions").update({ notes: $("coachNotes").value }).eq("id", sessionId);
@@ -395,19 +591,14 @@ async function openReport(sessionId) {
 
 $("btnBackReport").addEventListener("click", () => {
   $("reportDetail").classList.add("hidden");
-  document.querySelector("#view-reports .card").classList.remove("hidden");
+  $("sessionListCard").classList.remove("hidden");
 });
 $("btnPrint").addEventListener("click", () => window.print());
 
-/* ---------------- Yardımcılar ---------------- */
-function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })); }
-function fmt(sec) { return String(Math.floor(sec / 60)).padStart(2, "0") + ":" + String(sec % 60).padStart(2, "0"); }
-
-/* ---------------- Başlangıç ---------------- */
+/* ============================================================
+   BAŞLANGIÇ
+   ============================================================ */
 $("sDate").value = new Date().toISOString().slice(0, 10);
 loadAthletes();
-
-// PWA kaydı
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
-}
+setTimeout(() => $("splash").classList.add("hide"), 1100);
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
