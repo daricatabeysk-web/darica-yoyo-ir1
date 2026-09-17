@@ -127,12 +127,6 @@ async function init() {
   $("splash").classList.add("hide");
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   const { data: { session } } = await sb.auth.getSession();
-  const dbg = document.createElement("div");
-  dbg.id = "dbg";
-  dbg.style.cssText = "position:fixed;bottom:2px;right:4px;z-index:99;font:10px monospace;opacity:.6";
-  const sbKeys = Object.keys(localStorage).filter(k => k.includes("sb-"));
-  dbg.textContent = "sess:" + (session ? "VAR" : "YOK") + " lsKeys:" + sbKeys.length + (sbKeys[0] || "");
-  document.body.appendChild(dbg);
   if (session) enterApp(); else showLogin();
 }
 function showLogin() { $("loginView").classList.remove("hidden"); $("app").classList.add("hidden"); }
