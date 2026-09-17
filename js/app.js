@@ -336,6 +336,19 @@ function elapsedSec() {
 function curRun() { return SCHEDULE[live.runIdx]; }
 
 function beginRun(i) {
+  // sonraki koşuya geçiş: önceki koşu+dinlenme boyunca işaretlenmeyenler ihlal alır
+  if (i > live.runIdx) {
+    let anyOut = false;
+    live.players.forEach(p => {
+      if (p.eliminated) return;
+      if (!p.tapped) {
+        p.violations++;
+        if (p.violations >= 2) { p.eliminated = true; anyOut = true; }
+      }
+    });
+    if (anyOut) { AudioSys.elim(); renderBoard(); }
+    if (live.players.every(p => p.eliminated)) { enterResultsMode(true); return; }
+  }
   live.runIdx = i;
   live.phase = "run";
   live.phaseStart = Date.now();
@@ -359,15 +372,8 @@ function beginRun(i) {
 
 function endRun() {
   const r = curRun();
-  let anyOut = false;
-  live.players.forEach(p => {
-    if (p.eliminated) return;
-    if (!p.tapped) {
-      p.violations++;
-      if (p.violations >= 2) { p.eliminated = true; anyOut = true; }
-    }
-  });
-  if (anyOut) { AudioSys.elim(); renderBoard(); }
+  // ihlal değerlendirmesi beginRun'da (dinlenme sonunda) yapılır:
+  // koç, düdükten sonraki 10 sn dinlenmede de "✓ Koşu" ile işaretleyebilir
   if (r.n >= TOTAL_RUNS || live.players.every(p => p.eliminated)) { enterResultsMode(true); return; }
   live.phase = "rest";
   live.phaseStart = Date.now();
@@ -605,7 +611,7 @@ function renderBoard() {
   board.scrollTop = keepScroll;
   bindCardEvents();
   $("btnAllRan").addEventListener("click", () => {
-    if (live.phase !== "run") return toast("Sadece koşu fazında işaretlenir");
+    if (live.phase !== "run" && live.phase !== "rest") return toast("Şu anda koşu/dinlenme fazı yok");
     live.players.forEach(p => {
       if (p.eliminated) return;
       p.completed = Math.max(p.completed, curRun().n);
